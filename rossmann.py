@@ -38,6 +38,7 @@ def paired_ttest(df, attr):
         significant_results = results_df[results_df['p_value'] < 0.05]
         print("\n有意な差が検出された Store:")
         print(significant_results)
+        return significant_results["Store"].tolist()
     else:
         print("\n有意な差は検出されませんでした（データ不足の可能性あり）")
 
@@ -54,7 +55,7 @@ df = df[(df['Open'] == 1) & (df['Sales'] > 0)].copy()
 if 'Date' in df.columns:
     df['Date'] = pd.to_datetime(df['Date'])
     # 例として2015年7月のデータを抽出
-    df = df[df['Date'].dt.strftime('%Y') == '2014']  # Commented out to include all data
+    df = df[df['Date'].dt.strftime('%Y-%m') == '2014-02']  # Commented out to include all data
     # 文字列に戻す（カテゴリ変数として扱うため）
     df['Date'] = df['Date'].astype(str)
 
@@ -72,7 +73,7 @@ print(f"Data Shape: {df.shape}")
 
 
 # 分析対象の設定
-target_day = 5 # 金曜日 (Amazonでのカテゴリ選択に相当)
+target_day = 5 # 金曜日
 print(f"Intervention Target DayOfWeek: {target_day} (Friday)")
 
 
@@ -80,6 +81,8 @@ print(f"Intervention Target DayOfWeek: {target_day} (Friday)")
 # Calculate average sales for each store and select the top store
 store_avg_sales = df.groupby('Store')['Sales'].mean()
 top_store = store_avg_sales.idxmax()
+print(f"Top Store by Average Sales: {top_store}")
+print(f"Intervention Condition Hit Count: {df[(df['DayOfWeek'] == target_day) & (df['Store'] == top_store)].shape[0]}")
 
 # Filter data to include only the top store
 top_store_data = df[df['Store'] == top_store]
@@ -127,7 +130,7 @@ valid_stores = group_counts[group_counts >= 1].index
 filtered_conv = convresult[convresult["Store"].isin(valid_stores)]
 
 print(f"従来手法に対するt検定")
-paired_ttest(filtered_conv, result_val)
+sig_neighbourhoods_conv = paired_ttest(filtered_conv, result_val)
 
 groupby_convresult = filtered_conv.groupby(['Store'])[['Promo', 'POST_Promo', 'Sales', 'POST_Sales']].mean()
 
@@ -174,10 +177,17 @@ proresult = proresult[proresult['DayOfWeek'] == target_day]
 # データの絞り込み
 filtered_pro = proresult[proresult["Store"].isin(valid_stores)]
 print(f"提案手法に対するt検定")
-paired_ttest(filtered_pro, result_val)
+sig_neighbourhoods_pro = paired_ttest(filtered_pro, result_val)
 
-groupby_proresult = filtered_pro.groupby(['Store'])[['Promo', 'POST_Promo', 'Sales', 'POST_Sales']].mean()
+groupby_proresult = filtered_pro.groupby(["Store"])[["Promo", "POST_Promo", "Sales", "POST_Sales"]].mean()
 
+qualified_neighbourhoods = list(set(sig_neighbourhoods_conv) | set(sig_neighbourhoods_pro))
+groupby_proresult_filtered = groupby_proresult[
+    groupby_proresult.index.get_level_values("Store").isin(sig_neighbourhoods_pro)
+]
+groupby_convresult_filtered = groupby_convresult[
+    groupby_convresult.index.get_level_values("Store").isin(sig_neighbourhoods_pro)
+]
 
 # グラフ作成
 # フォントサイズを設定
@@ -192,9 +202,9 @@ rcParams.update({
 })
 
 # 売上規模が大きい上位10店舗を表示
-top_stores = df.groupby('Store')['Sales'].mean().sort_values(ascending=False).head(10).index
-groupby_proresult_plot = groupby_proresult.loc[top_stores]
-groupby_convresult_plot = groupby_convresult.loc[top_stores]
+groupby_proresult_plot = groupby_proresult_filtered.sort_values(by="Sales", ascending=False).head(10)
+final_target_stores = groupby_proresult_plot.index
+groupby_convresult_plot = groupby_convresult_filtered.loc[final_target_stores]
 
 stores_label = groupby_proresult_plot.index # 店舗名
 x = np.arange(len(stores_label))
@@ -229,9 +239,13 @@ plt.close()
 
 
 # 結果の表示
-print(f"更新前：\n{pre_result.head(10)}")
-print(f"更新後（DoWhy）：\n{post_convresult.head(10)}")
-print(f"更新後（提案手法）：\n{post_proresult.head(10)}")
+post_convresult_ttest = groupby_convresult_filtered.sort_values(by="Sales", ascending=False).head(10)[
+    f"POST_{result_val}"
+]
+print(f"更新前：\n{pre_result}")
+print(f"更新後（DoWhy）：\n{post_convresult}")
+print(f"更新後（提案手法）：\n{post_proresult}")
+print(f"更新後（DoWhy）T-test：\n{post_convresult_ttest}")
 
 # 実行時間の表示
 print(f"************************\n提案手法の実行時間\n************************\n")
