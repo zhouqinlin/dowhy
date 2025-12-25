@@ -210,9 +210,9 @@ plt.savefig(f"exp_result/{result_val}_{block_col}_ex({agg_func}).png", dpi=300)
 # plt.close()
 
 # 結果の表示
-print(f"更新前 (Mean by Year)：\n{pre_result.head()}")
-print(f"更新後 DoWhy (Mean by Year)：\n{post_convresult.head()}")
-print(f"更新後 提案手法 (Mean by Year)：\n{post_proresult.head()}")
+print(f"更新前 (Mean by Year)：\n{pre_result}")
+print(f"更新後 DoWhy (Mean by Year)：\n{post_convresult}")
+print(f"更新後 提案手法 (Mean by Year)：\n{post_proresult}")
 
 # 実行時間の表示
 print(f"************************\n提案手法の実行時間\n************************\n")
