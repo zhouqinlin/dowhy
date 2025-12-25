@@ -1,0 +1,20 @@
+
+cython
+scipy
+statsmodels
+numpy
+pandas
+networkx
+sympy
+scikit-learn
+pydot
+joblib
+
+econml
+tqdm
+causal-learn
+numba
+
+#Plotting Extra
+matplotlib
+cvxpy

@@ -26,17 +26,15 @@ from dowhy.graph import (
 
 def interventional_samples(
     causal_model: ProbabilisticCausalModel,
-    interventions: Dict[Any, Callable[[np.ndarray], Union[float, np.ndarray]]],
+    interventions: Dict[Any, Dict[str, Callable]],
     observed_data: Optional[pd.DataFrame] = None,
     num_samples_to_draw: Optional[int] = None,
 ) -> pd.DataFrame:
     """Performs intervention on nodes in the causal graph.
 
     :param causal_model: The probabilistic causal model we perform this intervention on .
-    :param interventions: Dictionary containing the interventions we want to perform, keyed by node name. An
-                          intervention is a function that takes a value as input and returns another value.
-                          For example, `{'X': lambda x: 2}` mimics the atomic intervention *do(X:=2)*.
-                          A soft intervention can be formulated as `{'X': lambda x: 0.2 * x}`.
+    :param interventions: Dictionary containing the interventions we want to perform, keyed by node name. Each value is a dictionary with 'condition' and 'intervention' keys.
+    Example: {'X': {'condition': lambda row: row['A'] > 0, 'intervention': lambda x: x * 2}}
     :param observed_data: Optionally, data on which to perform interventions. If None are given, data is generated based
                           on the generative models.
     :param num_samples_to_draw: Sample size to draw from the interventional distribution.
@@ -60,7 +58,7 @@ def interventional_samples(
 def _interventional_samples(
     pcm: ProbabilisticCausalModel,
     observed_data: pd.DataFrame,
-    interventions: Dict[Any, Callable[[np.ndarray], np.ndarray]],
+    interventions: Dict[Any, Dict[str, Callable]],
 ) -> pd.DataFrame:
     samples = observed_data.copy()
 
@@ -69,20 +67,33 @@ def _interventional_samples(
 
     # Simulating interventions by propagating the effects through the graph. For this, we iterate over the nodes based
     # on their topological order.
+    changed_nodes = []
     for node in sorted_nodes:
         if node not in affected_nodes:
+            print(f"{node} is not in affected nodes.")
             continue
 
         if is_root_node(pcm.graph, node):
             node_data = samples[node].to_numpy()
+            print(f"{node} is root node.")
+        elif node in interventions.keys():
+            node_data = samples[node].to_numpy()
+            print(f"{node} is in interventions.")
         else:
+            print(f"{node} is in affected nodes and not root node.")
             node_data = pcm.causal_mechanism(node).draw_samples(_parent_samples_of(node, pcm, samples))
 
         # After drawing samples of the node based on the data generation process, we apply the corresponding
         # intervention. The inputs of downstream nodes are therefore based on the outcome of the intervention in this
         # node.
-        samples[node] = _evaluate_intervention(node, interventions, node_data.reshape(-1))
+        # print(f"pre_intervention_data:{node_data.reshape(-1).shape}, row_condition:{samples.shape}")
+        samples[node] = _evaluate_intervention(node, interventions, node_data.reshape(-1), samples)
+        changed_nodes.append(node)
 
+    for node in changed_nodes:
+        post_attr = f"POST_{node}"
+        samples[post_attr] = samples[node]
+        samples[node] = observed_data[node]
     return samples
 
 
@@ -170,21 +181,47 @@ def _counterfactual_samples(
 
 
 def _evaluate_intervention(
-    node: Any, interventions: Dict[Any, Callable[[np.ndarray], np.ndarray]], pre_intervention_data: np.ndarray
+    node: Any,
+    interventions: Dict[Any, Dict[str, Callable]],
+    pre_intervention_data: np.ndarray,
+    row_conditions: pd.DataFrame,
 ) -> np.ndarray:
-    # Check if we need to apply an intervention on the given node.
+    """
+    Apply intervention to a node with optional row-specific conditions.
+    Supports both formats:
+    - New format: {'node': {'condition': fn, 'intervention': fn}}
+    - Legacy format: {'node': fn}
+
+    :param node: The node to which the intervention is applied.
+    :param interventions: Dictionary containing interventions with conditions and operations.
+    :param pre_intervention_data: Data for the node before intervention.
+    :param row_conditions: DataFrame with the same index as observed_data to check conditions row-wise.
+    :return: Data for the node after applying the intervention.
+    """
     if node in interventions:
-        # Apply intervention function to the data of the node.
-        post_intervention_data = np.array(list(map(interventions[node], pre_intervention_data)))
+        intervention_spec = interventions[node]
+        
+        # Check if it's the new format (dict with 'intervention' key)
+        if isinstance(intervention_spec, dict) and 'intervention' in intervention_spec:
+            # New format with optional conditions
+            condition_fn = intervention_spec.get("condition", None)
+            intervention_fn = intervention_spec["intervention"]
 
-        # Check if the intervention function changes the shape of the data.
-        if pre_intervention_data.shape != post_intervention_data.shape:
-            raise RuntimeError(
-                "Dimension of data corresponding to the node `%s` after intervention is different than before "
-                "intervention." % node
-            )
+            post_intervention_data = pre_intervention_data.copy()
+            
+            if condition_fn is None:
+                post_intervention_data = np.array(list(map(intervention_fn, pre_intervention_data)))
+            else:
+                # Apply condition-based intervention
+                mask = row_conditions.apply(condition_fn, axis=1).to_numpy()
+                post_intervention_data[mask] = intervention_fn(pre_intervention_data[mask])
 
-        return post_intervention_data
+            return post_intervention_data
+        else:
+            # Legacy format: direct function
+            intervention_fn = intervention_spec
+            post_intervention_data = np.array(list(map(intervention_fn, pre_intervention_data)))
+            return post_intervention_data
     else:
         return pre_intervention_data
 
