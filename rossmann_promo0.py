@@ -8,6 +8,7 @@ from matplotlib import rcParams
 from scipy.stats import ttest_rel
 # from verify import verify_extended_dataset # 必要に応じて有効化
 import time
+import os
 
 # 結果検証のためのt検定 attrとPOST_attrを比較
 def paired_ttest(df, attr):
@@ -73,8 +74,8 @@ print(f"Data Shape: {df.shape}")
 
 
 # 分析対象の設定
-target_day = 5 # 金曜日
-print(f"Intervention Target DayOfWeek: {target_day} (Friday)")
+target_day = 3 # 金曜日
+print(f"Intervention Target DayOfWeek: {target_day}")
 
 
 # 介入条件
@@ -106,7 +107,7 @@ causal_graph = nx.DiGraph([
     ('Customers', 'Sales'),
     ('Promo', 'Customers'), # Promoは客数にも影響
     ('DayOfWeek', 'Customers'),
-    ('Store', 'Sales') # 店舗ごとのベースライン
+    ('Store', 'Sales') 
 ])
 
 causal_model = gcm.ProbabilisticCausalModel(causal_graph)
@@ -202,7 +203,14 @@ rcParams.update({
 })
 
 # 売上規模が大きい上位10店舗を表示
-groupby_proresult_plot = groupby_proresult_filtered.sort_values(by="Sales", ascending=False).head(10)
+# ランダムの20店舗を表示する
+# データ数が20未満の場合は全データを使用
+sample_n = min(20, len(groupby_proresult_filtered))
+
+# ランダムサンプリング
+# random_state=42 を指定することで、毎回同じ店舗が選ばれるようになります
+groupby_proresult_plot = groupby_proresult_filtered.sample(n=sample_n, random_state=42)
+
 final_target_stores = groupby_proresult_plot.index
 groupby_convresult_plot = groupby_convresult_filtered.loc[final_target_stores]
 
@@ -231,9 +239,10 @@ plt.legend(loc='lower center', bbox_to_anchor=(0.5, 1.05), ncol=3)
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 plt.tight_layout()
 
+script_name = os.path.splitext(os.path.basename(__file__))[0]
 # グラフを保存
-plt.savefig(f"exp_result/{result_val}_rossmann_ex({agg_func}).png", dpi=300)
-plt.savefig(f"exp_result/{result_val}_rossmann_ex({agg_func}).pdf", dpi=300)
+plt.savefig(f"exp_result/{result_val}_{script_name}_ex({agg_func}).png", dpi=300)
+plt.savefig(f"exp_result/{result_val}_{script_name}_ex({agg_func}).pdf", dpi=300)
 
 plt.close()
 
@@ -254,3 +263,11 @@ print(f"データセット拡張に要した時間：{end_exdata-start_exdata}")
 print(f"モデルの学習に要した時間：{end_train-start_train}")
 print(f"What-If分析に要した時間：{end_all-start_whatif}")
 print(f"全体の実行時間：{end_all-start_all}")
+
+# Aggregate results (Average per store)
+groupby_proresult.to_csv(f"exp_result/{script_name}_proposed_method_aggregated.csv")
+groupby_convresult.to_csv(f"exp_result/{script_name}_conventional_method_aggregated.csv")
+
+# Detailed results (Raw data including Date, Store, Sales, POST_Sales)
+filtered_pro.to_csv(f"exp_result/{script_name}_proposed_method_detailed.csv", index=False)
+filtered_conv.to_csv(f"exp_result/{script_name}_conventional_method_detailed.csv", index=False)
