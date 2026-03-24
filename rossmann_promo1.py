@@ -104,9 +104,6 @@ result_val = 'Sales'
 causal_graph = nx.DiGraph([
     ('DayOfWeek', 'Sales'),
     ('Promo', 'Sales'),
-    ('Customers', 'Sales'),
-    ('Promo', 'Customers'), # Promoは客数にも影響
-    ('DayOfWeek', 'Customers'),
     ('Store', 'Sales') # 店舗ごとのベースライン
 ])
 
@@ -147,9 +144,6 @@ causal_query.set_causal_graph(
     [
         ('DayOfWeek', 'Sales'),
         ('Promo', 'Sales'),
-        ('Customers', 'Sales'),
-        ('Promo', 'Customers'),
-        ('DayOfWeek', 'Customers'),
         ('Store', 'Sales')
     ],
     [('Promo', 'Sales')], # 拡張エッジ（他店のPromo -> 自店のSales）

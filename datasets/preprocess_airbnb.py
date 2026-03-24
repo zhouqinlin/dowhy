@@ -9,7 +9,7 @@ def clean_airbnb_data(input_file, output_file):
     # 'room_type': 部屋タイプ（Amazonデータのcategoriesに相当）
     # 'price': 価格（介入変数）
     # 'review_scores_rating': 評価スコア（結果変数）
-    target_cols = ['id', 'neighbourhood_cleansed', 'room_type', 'price', 'review_scores_rating']
+    target_cols = ['id', 'neighbourhood_cleansed', 'room_type', 'price', 'review_scores_rating', 'latitude', 'longitude']
     
     try:
         # encoding='utf-8' で読み込めない場合は 'utf-8-sig' や 'latin1' を試行
